@@ -62,6 +62,12 @@ typedef struct VulkanExtensions
     Uint8 KHR_portability_subset;
     // Only required for decoding HDR ASTC textures
     Uint8 EXT_texture_compression_astc_hdr;
+
+#ifdef VK_VERSION_1_2
+#elif defined(VK_VERSION_1_1)
+    Uint8 VK_KHR_16bit_storage;
+    Uint8 VK_KHR_SHADER_SUBGROUP_EXTENDED_TYPES;
+#endif
 } VulkanExtensions;
 
 // Defines
@@ -3875,7 +3881,7 @@ static VulkanGraphicsPipelineResourceLayout *VULKAN_INTERNAL_FetchGraphicsPipeli
 
     pipelineResourceLayout->descriptorSetLayouts[0] = VULKAN_INTERNAL_FetchDescriptorSetLayout(
         renderer,
-        VK_SHADER_STAGE_VERTEX_BIT,
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         vertexShader->numSamplers,
         vertexShader->numStorageTextures,
         vertexShader->numStorageBuffers,
@@ -3885,7 +3891,7 @@ static VulkanGraphicsPipelineResourceLayout *VULKAN_INTERNAL_FetchGraphicsPipeli
 
     pipelineResourceLayout->descriptorSetLayouts[1] = VULKAN_INTERNAL_FetchDescriptorSetLayout(
         renderer,
-        VK_SHADER_STAGE_VERTEX_BIT,
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         0,
         0,
         0,
@@ -8093,7 +8099,7 @@ static void VULKAN_BeginComputePass(
             vulkanCommandBuffer,
             bufferContainer,
             storageBufferBindings[i].cycle,
-            VULKAN_BUFFER_USAGE_MODE_COMPUTE_STORAGE_READ);
+            VULKAN_BUFFER_USAGE_MODE_COMPUTE_STORAGE_READ_WRITE);
 
         vulkanCommandBuffer->readWriteComputeStorageBuffers[i] = buffer;
 
@@ -10881,6 +10887,11 @@ static inline void CreateDeviceExtensionArray(
     CHECK(EXT_vertex_attribute_divisor)
     CHECK(KHR_portability_subset)
     CHECK(EXT_texture_compression_astc_hdr)
+#ifdef VK_VERSION_1_2
+#elif defined(VK_VERSION_1_1)
+    CHECK(VK_KHR_16bit_storage)
+    CHECK(VK_KHR_SHADER_SUBGROUP_EXTENDED_TYPES)
+#endif
 #undef CHECK
 }
 
@@ -11026,7 +11037,7 @@ static Uint8 VULKAN_INTERNAL_CreateInstance(VulkanRenderer *renderer)
     appInfo.applicationVersion = 0;
     appInfo.pEngineName = "SDLGPU";
     appInfo.engineVersion = SDL_VERSION;
-    appInfo.apiVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.apiVersion = VK_MAKE_VERSION(1, 2, 0);
 
     createFlags = 0;
 
@@ -11132,6 +11143,7 @@ static Uint8 VULKAN_INTERNAL_IsDeviceSuitable(
     VkPhysicalDeviceFeatures deviceFeatures;
     Uint32 i;
 
+    SDL_Log("Checking device suitability...");
     const Uint8 *devicePriority = renderer->preferLowPower ? DEVICE_PRIORITY_LOWPOWER : DEVICE_PRIORITY_HIGHPERFORMANCE;
 
     /* Get the device rank before doing any checks, in case one fails.
@@ -11156,14 +11168,49 @@ static Uint8 VULKAN_INTERNAL_IsDeviceSuitable(
         return 0;
     }
 
-    renderer->vkGetPhysicalDeviceFeatures(
+    #ifdef VK_VERSION_1_2
+    bool hasVulkan1_1 = deviceProperties.apiVersion >= VK_API_VERSION_1_1;
+    bool hasVulkan1_2 = deviceProperties.apiVersion >= VK_API_VERSION_1_2;    
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Device supports Vulkan 1.1: %s 1.2 %s", hasVulkan1_1 ? "Yes" : "No", hasVulkan1_2 ? "Yes" : "No");
+
+    VkPhysicalDeviceFeatures2 deviceFeatures2;
+    SDL_memset(&deviceFeatures2, '\0', sizeof(VkPhysicalDeviceFeatures2));
+    deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+
+    // check extensions
+    VkPhysicalDevice16BitStorageFeatures storage16Features;
+    if (!hasVulkan1_2) {
+        SDL_memset(&storage16Features, '\0', sizeof(VkPhysicalDevice16BitStorageFeatures));
+        storage16Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
+        storage16Features.storageBuffer16BitAccess = VK_TRUE;
+        storage16Features.uniformAndStorageBuffer16BitAccess = VK_TRUE;
+        storage16Features.storagePushConstant16 = VK_TRUE;
+        deviceFeatures2.pNext = &storage16Features;
+    }
+
+    renderer->vkGetPhysicalDeviceFeatures2(physicalDevice,&deviceFeatures2);
+
+    if (!hasVulkan1_2) {
+        if (!storage16Features.storageBuffer16BitAccess || !storage16Features.uniformAndStorageBuffer16BitAccess || !storage16Features.storagePushConstant16) {
+            SDL_LogError(SDL_LOG_CATEGORY_GPU, "Device does not support 16-bit storage features");
+            return 0;
+        }
+    }
+    deviceFeatures = deviceFeatures2.features;
+
+    #else
+     renderer->vkGetPhysicalDeviceFeatures(
         physicalDevice,
         &deviceFeatures);
+    #endif
+
     if (!deviceFeatures.independentBlend ||
         !deviceFeatures.imageCubeArray ||
         !deviceFeatures.depthClamp ||
         !deviceFeatures.shaderClipDistance ||
         !deviceFeatures.drawIndirectFirstInstance) {
+            SDL_LogError(SDL_LOG_CATEGORY_GPU, "Device does not support required features");
         return 0;
     }
 
@@ -11171,6 +11218,7 @@ static Uint8 VULKAN_INTERNAL_IsDeviceSuitable(
             renderer,
             physicalDevice,
             physicalDeviceExtensions)) {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU, "Device does not support required extensions");
         return 0;
     }
 
@@ -11245,6 +11293,7 @@ static Uint8 VULKAN_INTERNAL_IsDeviceSuitable(
 
     if (*queueFamilyIndex == SDL_MAX_UINT32) {
         // Somehow no graphics queues existed. Compute-only device?
+        SDL_LogError(SDL_LOG_CATEGORY_GPU, "No suitable queue family found");
         return 0;
     }
 
@@ -11261,6 +11310,8 @@ static Uint8 VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
     Sint32 suitableIndex;
     Uint32 queueFamilyIndex, suitableQueueFamilyIndex;
     Uint8 deviceRank, highestRank;
+
+    SDL_LogVerbose(SDL_LOG_CATEGORY_GPU, "Determining physical device...");
 
     vulkanResult = renderer->vkEnumeratePhysicalDevices(
         renderer->instance,
@@ -11306,6 +11357,7 @@ static Uint8 VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
     suitableQueueFamilyIndex = 0;
     highestRank = 0;
     for (i = 0; i < physicalDeviceCount; i += 1) {
+        SDL_LogVerbose(SDL_LOG_CATEGORY_GPU, "Checking physical device %u...", i);
         deviceRank = highestRank;
         if (VULKAN_INTERNAL_IsDeviceSuitable(
                 renderer,
@@ -11379,6 +11431,7 @@ static Uint8 VULKAN_INTERNAL_CreateLogicalDevice(
 {
     VkResult vulkanResult;
     VkDeviceCreateInfo deviceCreateInfo;
+    VkPhysicalDeviceFeatures2 desiredDeviceFeatures2;
     VkPhysicalDeviceFeatures desiredDeviceFeatures;
     VkPhysicalDeviceFeatures haveDeviceFeatures;
     VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilityFeatures;
@@ -11404,6 +11457,7 @@ static Uint8 VULKAN_INTERNAL_CreateLogicalDevice(
     // specifying used device features
 
     SDL_zero(desiredDeviceFeatures);
+    SDL_zero(desiredDeviceFeatures2);
     desiredDeviceFeatures.independentBlend = VK_TRUE;
     desiredDeviceFeatures.samplerAnisotropy = VK_TRUE;
     desiredDeviceFeatures.imageCubeArray = VK_TRUE;
@@ -11458,7 +11512,42 @@ static Uint8 VULKAN_INTERNAL_CreateLogicalDevice(
         deviceCreateInfo.enabledExtensionCount);
     CreateDeviceExtensionArray(&renderer->supports, deviceExtensions);
     deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
-    deviceCreateInfo.pEnabledFeatures = &desiredDeviceFeatures;
+    //deviceCreateInfo.pEnabledFeatures = &desiredDeviceFeatures;
+
+    VkPhysicalDevice16BitStorageFeatures storage16Features;
+    SDL_memset(&storage16Features, '\0', sizeof(VkPhysicalDevice16BitStorageFeatures));
+    storage16Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
+    storage16Features.storageBuffer16BitAccess = VK_TRUE;
+    storage16Features.uniformAndStorageBuffer16BitAccess = VK_TRUE;
+    storage16Features.storagePushConstant16 = VK_TRUE;
+    storage16Features.pNext = deviceCreateInfo.pNext;
+
+    desiredDeviceFeatures.shaderInt16 = VK_TRUE;
+
+    // VkPhysicalDevice8BitStorageFeatures storage8Features;
+    // SDL_memset(&storage8Features, '\0', sizeof(VkPhysicalDevice8BitStorageFeatures));
+    // storage8Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES;
+    // storage8Features.storageBuffer8BitAccess = VK_TRUE;
+    // storage8Features.uniformAndStorageBuffer8BitAccess = VK_TRUE;
+    // storage8Features.storagePushConstant8 = VK_TRUE;
+    // storage8Features.pNext = &storage16Features;
+
+
+    VkPhysicalDeviceVulkan12Features deviceFeatures1_2;
+    SDL_memset(&deviceFeatures1_2, '\0', sizeof(VkPhysicalDeviceVulkan12Features));
+    deviceFeatures1_2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    deviceFeatures1_2.shaderInt8 = VK_TRUE;
+    deviceFeatures1_2.uniformAndStorageBuffer8BitAccess = VK_TRUE;
+    deviceFeatures1_2.storageBuffer8BitAccess = VK_TRUE;
+    deviceFeatures1_2.storagePushConstant8 = VK_TRUE;
+    deviceFeatures1_2.pNext = &storage16Features;
+
+
+    desiredDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    desiredDeviceFeatures2.features = desiredDeviceFeatures;
+    desiredDeviceFeatures2.pNext = &deviceFeatures1_2;
+    deviceCreateInfo.pNext = &desiredDeviceFeatures2;
+
 
     vulkanResult = renderer->vkCreateDevice(
         renderer->physicalDevice,
@@ -11525,6 +11614,7 @@ static void VULKAN_INTERNAL_LoadEntryPoints(void)
 static bool VULKAN_INTERNAL_PrepareVulkan(
     VulkanRenderer *renderer)
 {
+    SDL_LogVerbose(SDL_LOG_CATEGORY_GPU, "Preparing Vulkan...");
     VULKAN_INTERNAL_LoadEntryPoints();
 
     if (!VULKAN_INTERNAL_CreateInstance(renderer)) {
@@ -11550,10 +11640,12 @@ static bool VULKAN_PrepareDriver(SDL_VideoDevice *_this)
     Uint8 result;
 
     if (_this->Vulkan_CreateSurface == NULL) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_GPU, "Vulkan: SDL_Vulkan_CreateSurface not available!");
         return false;
     }
 
     if (!SDL_Vulkan_LoadLibrary(NULL)) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_GPU, "Vulkan: SDL_Vulkan_LoadLibrary failed!");
         return false;
     }
 

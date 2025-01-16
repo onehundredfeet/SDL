@@ -62,6 +62,7 @@ bool Cocoa_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
     // Load the Vulkan loader library
     if (!path) {
         path = SDL_GetHint(SDL_HINT_VULKAN_LIBRARY);
+        SDL_Log("No Vulkan loader library specified, trying to load default library at %s", path);
     }
 
     if (!path) {

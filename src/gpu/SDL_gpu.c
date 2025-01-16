@@ -426,12 +426,16 @@ static const SDL_GPUBootstrap * SDL_GPUSelectBackend(SDL_PropertiesID props)
     }
 
     for (i = 0; backends[i]; i += 1) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Trying GPU backend %s", backends[i]->name);
         if ((backends[i]->shader_formats & format_flags) == 0) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Backend %s doesn't support the app's shaders", backends[i]->name);
             // Don't select a backend which doesn't support the app's shaders.
             continue;
         }
         if (backends[i]->PrepareDriver(_this)) {
             return backends[i];
+        } else {
+            SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Failed to prepare GPU backend %s", backends[i]->name);
         }
     }
 
@@ -500,6 +504,7 @@ SDL_GPUDevice *SDL_CreateGPUDevice(
     bool debug_mode,
     const char *name)
 {
+    SDL_LogInfo(SDL_LOG_CATEGORY_GPU, "Creating GPU device with format flags 0x%08X, debug mode %d, name %s", format_flags, debug_mode, name);
 #ifndef SDL_GPU_DISABLED
     SDL_GPUDevice *result;
     SDL_PropertiesID props = SDL_CreateProperties();
@@ -532,6 +537,9 @@ SDL_GPUDevice *SDL_CreateGPUDeviceWithProperties(SDL_PropertiesID props)
             result->shader_formats = selectedBackend->shader_formats;
             result->debug_mode = debug_mode;
         }
+    }
+    else {
+        SDL_LogError(SDL_LOG_CATEGORY_GPU, "Failed to select a backend for GPU device creation");
     }
     return result;
 #else

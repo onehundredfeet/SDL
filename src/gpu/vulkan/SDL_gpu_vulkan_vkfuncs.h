@@ -67,6 +67,9 @@ VULKAN_INSTANCE_FUNCTION(vkSetDebugUtilsObjectNameEXT)
 VULKAN_INSTANCE_FUNCTION(vkCmdEndDebugUtilsLabelEXT)
 VULKAN_INSTANCE_FUNCTION(vkCmdInsertDebugUtilsLabelEXT)
 
+// Vulkan 1.1
+VULKAN_INSTANCE_FUNCTION(vkGetPhysicalDeviceFeatures2)
+
 /*
  * vkDevice, created by a vkInstance
  */
