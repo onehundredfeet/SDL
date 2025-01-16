@@ -5,7 +5,7 @@ if(NOT DEFINED CMAKE_BUILD_TYPE)
 endif()
 
 # See docs/release_checklist.md
-project(SDL3 LANGUAGES C VERSION "3.1.9")
+project(SDL3 LANGUAGES C VERSION "3.1.11")
 
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
   set(SDL3_MAINPROJECT ON)
@@ -1158,8 +1158,8 @@ sdl_glob_sources(
   "${SDL3_SOURCE_DIR}/src/cpuinfo/*.c"
   "${SDL3_SOURCE_DIR}/src/dynapi/*.c"
   "${SDL3_SOURCE_DIR}/src/events/*.c"
-  "${SDL3_SOURCE_DIR}/src/file/*.c"
-  "${SDL3_SOURCE_DIR}/src/file/generic/*.c"
+  "${SDL3_SOURCE_DIR}/src/io/*.c"
+  "${SDL3_SOURCE_DIR}/src/io/generic/*.c"
   "${SDL3_SOURCE_DIR}/src/filesystem/*.c"
   "${SDL3_SOURCE_DIR}/src/gpu/*.c"
   "${SDL3_SOURCE_DIR}/src/joystick/*.c"
@@ -1774,7 +1774,7 @@ elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
     endif()
 
     if(HAVE_LIBURING_H)
-      sdl_sources("${SDL3_SOURCE_DIR}/src/file/io_uring/SDL_asyncio_liburing.c")
+      sdl_sources("${SDL3_SOURCE_DIR}/src/io/io_uring/SDL_asyncio_liburing.c")
     endif()
 
     # Always compiled for Linux, unconditionally:
@@ -1889,6 +1889,7 @@ elseif(WINDOWS)
 
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/core/windows/*.c")
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/windows/*.c")
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/io/windows/*.c")
 
   if(TARGET SDL3-shared AND MSVC AND NOT SDL_LIBC)
     # Prevent codegen that would use the VC runtime libraries.
@@ -2912,7 +2913,7 @@ elseif(N3DS)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/locale/n3ds/*.c")
   set(HAVE_SDL_LOCALE TRUE)
 
-  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/file/n3ds/*.c")
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/io/n3ds/*.c")
 endif()
 
 sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/SDL_dialog.c)
@@ -3330,8 +3331,8 @@ endif()
 set_source_files_properties(src/dynapi/SDL_dynapi.c PROPERTIES SKIP_PRECOMPILE_HEADERS 1)
 
 set(SDL_FRAMEWORK_RESOURCES
-  Xcode/SDL/pkg-support/resources/ReadMe.txt
   LICENSE.txt
+  README.md
 )
 if(SDL_FRAMEWORK)
   sdl_sources(${SDL_FRAMEWORK_RESOURCES})
