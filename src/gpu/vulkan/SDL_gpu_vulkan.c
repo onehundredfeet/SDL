@@ -8568,7 +8568,7 @@ static void VULKAN_EndComputePass(
             VULKAN_INTERNAL_TextureTransitionToDefaultUsage(
                 vulkanCommandBuffer->renderer,
                 vulkanCommandBuffer,
-                VULKAN_TEXTURE_USAGE_MODE_COMPUTE_STORAGE_READ,
+                VULKAN_BUFFER_USAGE_MODE_COMPUTE_STORAGE_READ_WRITE,
                 vulkanCommandBuffer->readOnlyComputeStorageTextures[i]);
 
             vulkanCommandBuffer->readOnlyComputeStorageTextures[i] = NULL;
