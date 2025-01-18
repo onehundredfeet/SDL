@@ -11520,7 +11520,7 @@ static Uint8 VULKAN_INTERNAL_CreateLogicalDevice(
         deviceCreateInfo.enabledExtensionCount);
     CreateDeviceExtensionArray(&renderer->supports, deviceExtensions);
     deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
-    //deviceCreateInfo.pEnabledFeatures = &desiredDeviceFeatures;
+    deviceCreateInfo.pEnabledFeatures = NULL;
 
     VkPhysicalDevice16BitStorageFeatures storage16Features;
     SDL_memset(&storage16Features, '\0', sizeof(VkPhysicalDevice16BitStorageFeatures));
