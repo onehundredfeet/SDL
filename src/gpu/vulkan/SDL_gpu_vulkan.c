@@ -584,13 +584,13 @@ struct VulkanBuffer
 struct VulkanBufferContainer
 {
     VulkanBuffer *activeBuffer;
+    char *debugName;
 
     VulkanBuffer **buffers;
     Uint32 bufferCapacity;
     Uint32 bufferCount;
 
     bool dedicated;
-    char *debugName;
 };
 
 // Renderer Structure
@@ -762,6 +762,8 @@ typedef struct VulkanPresentData
 typedef struct VulkanUniformBuffer
 {
     VulkanBuffer *buffer;
+    char *debugName;    // ONLY HERE FOR COMPATIBILITY WITH THE HACK WHERE THIS IS CAST TO A BUFFERCONTAINER
+
     Uint32 drawOffset;
     Uint32 writeOffset;
 } VulkanUniformBuffer;
@@ -1469,6 +1471,7 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
     }
 
     newFreeRegion = SDL_malloc(sizeof(VulkanMemoryFreeRegion));
+    SDL_memset(newFreeRegion, 0, sizeof(VulkanMemoryFreeRegion));
     newFreeRegion->offset = offset;
     newFreeRegion->size = size;
     newFreeRegion->allocation = allocation;
@@ -4109,7 +4112,7 @@ static VulkanBuffer *VULKAN_INTERNAL_CreateBuffer(
     }
 
     buffer = SDL_malloc(sizeof(VulkanBuffer));
-
+    SDL_memset( buffer, 0, sizeof(VulkanBuffer));
     buffer->size = size;
     buffer->usage = usageFlags;
     buffer->type = type;
@@ -4165,6 +4168,7 @@ static VulkanBuffer *VULKAN_INTERNAL_CreateBuffer(
         VkDebugUtilsObjectNameInfoEXT nameInfo;
         nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
         nameInfo.pNext = NULL;
+        printf("VULKAN_INTERNAL_CreateBuffer 2 debugName is %s %zd\n", debugName ? debugName : "NULL", debugName ? strlen(debugName) : 0);
         nameInfo.pObjectName = debugName;
         nameInfo.objectType = VK_OBJECT_TYPE_BUFFER;
         nameInfo.objectHandle = (uint64_t)buffer->buffer;
@@ -4201,6 +4205,8 @@ static VulkanBufferContainer *VULKAN_INTERNAL_CreateBufferContainer(
     }
 
     bufferContainer = SDL_malloc(sizeof(VulkanBufferContainer));
+    SDL_memset(bufferContainer, '\0', sizeof(VulkanBufferContainer));
+//    bufferContainer->magic = MAGIC_VulkanBufferContainer;
 
     bufferContainer->activeBuffer = buffer;
     buffer->container = bufferContainer;
@@ -6806,6 +6812,7 @@ static VulkanUniformBuffer *VULKAN_INTERNAL_CreateUniformBuffer(
     Uint32 size)
 {
     VulkanUniformBuffer *uniformBuffer = SDL_malloc(sizeof(VulkanUniformBuffer));
+    uniformBuffer->debugName = NULL; // Neccessary for the hack below
 
     uniformBuffer->buffer = VULKAN_INTERNAL_CreateBuffer(
         renderer,
@@ -10653,6 +10660,7 @@ static bool VULKAN_INTERNAL_DefragmentMemory(
                 currentRegion->vulkanBuffer->container != NULL ? currentRegion->vulkanBuffer->container->debugName : NULL);
 
             if (newBuffer == NULL) {
+                SDL_LogError(SDL_LOG_CATEGORY_GPU, "Failed to create new buffer for defragging!\n");
                 SDL_UnlockMutex(renderer->allocatorLock);
                 return false;
             }
